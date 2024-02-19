@@ -1,0 +1,2 @@
+# only the main ops user can modify the rules
+/.github/* @ksilin
