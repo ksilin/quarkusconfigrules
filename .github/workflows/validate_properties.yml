@@ -17,6 +17,6 @@ jobs:
           python-version: '3.x'
 
       - name: Validate application.properties
-        run: ./scripts/validate-properties.py
+        run: ./scripts/validate_properties.py
       #- name: Validate application.properties
       #  run: ./scripts/verify-config.sh
