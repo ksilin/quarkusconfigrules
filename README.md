@@ -1,54 +1,70 @@
 # quarkusconfig
 
-This project uses Quarkus, the Supersonic Subatomic Java Framework.
+The purpose of this project is to provide enforceable guidelines on application configurations. 
+In its first iteration, specifically on Kafka Streams applications created with the Quarkus framework. 
 
-If you want to learn more about Quarkus, please visit its website: https://quarkus.io/ .
+The assumption is that the configuration is contained in the `src/resources/application.properties` file. 
 
-## Running the application in dev mode
+## Rules
 
-You can run your application in dev mode that enables live coding using:
-```shell script
-./gradlew quarkusDev
-```
+There are several types of rules: 
 
-> **_NOTE:_**  Quarkus now ships with a Dev UI, which is available in dev mode only at http://localhost:8080/q/dev/.
+Some enforce a value or one of many possible values, or a value range. 
+Some enforce a reasonable cooperation of values.  
+Some enforce that once a default value has been overridden, it is done on purpose, and with a reasonable alternative. 
 
-## Packaging and running the application
+### Enforcing a value or value range
 
-The application can be packaged using:
-```shell script
-./gradlew build
-```
-It produces the `quarkus-run.jar` file in the `build/quarkus-app/` directory.
-Be aware that it’s not an _über-jar_ as the dependencies are copied into the `build/quarkus-app/lib/` directory.
+* Value 
 
-The application is now runnable using `java -jar build/quarkus-app/quarkus-run.jar`.
+When working with Conflunet Cloud, the value for the security protocol always needs to be set to `SASL_SSL`. 
 
-If you want to build an _über-jar_, execute the following command:
-```shell script
-./gradlew build -Dquarkus.package.type=uber-jar
-```
+* One value of many 
 
-The application, packaged as an _über-jar_, is now runnable using `java -jar build/*-runner.jar`.
+When deciding on one of many options, e.g. compression algorithm, the decision depends on the data and should be the result of benchmarking. 
+We might decide to allow `snappy` and `lz4`, while disallowing `gzip` and `zstd`.  
 
-## Creating a native executable
+* Value range
 
-You can create a native executable using: 
-```shell script
-./gradlew build -Dquarkus.package.type=native
-```
+We might decide to override `max.poll.records`, to reduce or increase the number of records processed per poll loop. But these changes need to happen in a reasonable range.
 
-Or, if you don't have GraalVM installed, you can run the native executable build in a container using: 
-```shell script
-./gradlew build -Dquarkus.package.type=native -Dquarkus.native.container-build=true
-```
 
-You can then execute your native executable with: `./build/quarkusconfig-1.0.0-SNAPSHOT-runner`
+### Enforcing value combination example
 
-If you want to learn more about building native executables, please consult https://quarkus.io/guides/gradle-tooling.
+Consumer configuration:
 
-## Related Guides
+`default.api.timeout.ms` defaults to 60 seconds.
 
-- Apache Kafka Streams ([guide](https://quarkus.io/guides/kafka-streams)): Implement stream processing applications based on Apache Kafka
-- Micrometer metrics ([guide](https://quarkus.io/guides/micrometer)): Instrument the runtime and your application with dimensional metrics using Micrometer.
-- Micrometer Registry Prometheus ([guide](https://quarkus.io/guides/micrometer)): Enable Prometheus support for Micrometer
+`request.timeout.ms` defaults to 30 seconds.
+
+Some applications override/increase the request timeout, in order to be able to handle longer outages. However, they might forget to also increase the default API timeout.   
+
+The default API timeout value should be greater than the request timeout in order to be able to gracefully handle errors, e.g. committing offsets in an exception handler.  
+If this is not the case, the application will timeout immediately, after the request timeout threshold has been reached. 
+
+### Defaults are fine, overrides need to be coordinated
+
+The default deserialization exception handler will fail on a message it cannot read, bringing down the instance. In many cases, this is the expected behavior. However, we might want to rather skip the record and continue. 
+
+This decision needs to be communicated and agreed upon, so by default, overriding the handler is not allowed. The ruel can be disabled for a project, once consensus has been reached.  
+
+## Details
+
+### Error aggregation
+
+While we value rapid feeback, complete feedback is even more preferable. We do not fail on the first rule violation. We aggregate all violations, so they can be fixed all at once, saving precious cycle time. 
+
+
+### Profies and prefixes
+
+The Quarkus framework offers the possiblity to work with multiple profiles. In the configuration files, the properties are then prefixed with the profile name, e.g. 
+
+`%prod.kafka.sasl.mechanism=PLAIN`
+
+For correct functionality
+
+## TODOs
+
+* profile-specific rules
+
+
