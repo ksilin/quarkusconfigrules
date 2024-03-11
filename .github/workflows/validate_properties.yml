@@ -11,10 +11,12 @@ jobs:
       - uses: actions/checkout@v4
         name: Checkout code
 
-      #- name: Set up Python 3.x
-      #  uses: actions/setup-python@v5
-      #  with:
-      #    python-version: '3.x'
+      - name: Set up Python 3.x
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
 
       - name: Validate application.properties
-        run: ./scripts/verify-config.sh
+        run: ./scripts/validate-properties.py
+      #- name: Validate application.properties
+      #  run: ./scripts/verify-config.sh
