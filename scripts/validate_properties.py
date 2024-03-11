@@ -40,27 +40,13 @@ def rule_matching_suffix_value(properties, key_suffix, expected_values, treat_ke
             return False, f"No key ending with '{key_suffix}' found"
 
 
-def rule_max_records(properties):
-    key = next(filter(lambda k: k.endswith('max.records'), properties.keys()), None)
+def rule_max_poll_records(properties):
+    key = next(filter(lambda k: k.endswith('max.poll.records'), properties.keys()), None)
     if key is None: return True
     if key is not None:
         max_records = properties[key]
-        return is_numeric(max_records) and int(max_records) <= 10000
+        return is_numeric(max_records) and int(max_records) <= 1000
     return False
-
-def rule_timeout_and_backoff(properties):
-    timeout = properties.get('timeout')
-    max_records = properties.get('max.records')
-    backoff = properties.get('backoff')
-
-    if timeout:
-        if not timeout.isdigit() or (max_records and int(timeout) >= int(max_records)):
-            return False
-        if backoff is None or backoff.lower() not in ['true', 'false']:
-            return False
-    elif backoff and backoff.lower() not in ['true', 'false']:
-        return False
-    return True
 
 def validate_properties(properties):
     errors = []
@@ -68,11 +54,8 @@ def validate_properties(properties):
     # if not rule_application_id_or_client_id_defined(properties):
     #    errors.append("Either 'kafka-streams.application-id' or '*client.id' must be defined.")
 
-    if not rule_max_records(properties):
-        errors.append("Property 'max.records' must be numeric and <= 10000.")
-
-    if not rule_timeout_and_backoff(properties):
-        errors.append("Rules for 'timeout' and 'backoff' failed.")
+    if not rule_max_poll_records(properties):
+        errors.append("Property 'max.poll.records' must be numeric and <= 10000.")
 
     max_records_success, msg = rule_matching_suffix_value(properties, 'kafka.security.protocol', 'SASL_SSL')
     if not max_records_success:
