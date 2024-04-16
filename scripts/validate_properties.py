@@ -19,11 +19,16 @@ def validate_keys_not_ending_with(data_dict, suffix):
             return False, f"Expected {key} to not be set. It is set to {data_dict[key]}."
     return True, None
 
-def rule_matching_suffix_value(properties, key_suffix, expected_values, treat_key_not_found_as_success=False):
+def rule_matching_suffix_value(properties, key_suffix, expected_values, treat_key_not_found_as_success=False, ignore_profiles=None):
     if not isinstance(expected_values, list):
         expected_values = [expected_values]
 
-    key = next((k for k in properties.keys() if k.endswith(key_suffix)), None)
+    if ignore_profiles is None:
+        ignore_profiles = []
+
+    filtered_keys = {k: v for k, v in properties.items() if not any(k.startswith(f"%{profile}") for profile in ignore_profiles)}
+
+    key = next((k for k in filtered_keys if k.endswith(key_suffix)), None)
 
     if key is not None:
         if properties[key] in expected_values:
@@ -43,11 +48,16 @@ def is_numeric(value):
     except ValueError:
         return False
 
-def validate_numeric_range_property(properties, key_suffix, min_val=0, max_val=None, treat_key_not_found_as_success=False):
+def validate_numeric_range_property(properties, key_suffix, min_val=0, max_val=None, treat_key_not_found_as_success=False, ignore_profiles=None):
     if max_val is None:
         max_val = float('inf')
 
-    key = next((k for k in properties.keys() if k.endswith(key_suffix)), None)
+    if ignore_profiles is None:
+        ignore_profiles = []
+
+    filtered_keys = {k: v for k, v in properties.items() if not any(k.startswith(f"%{profile}") for profile in ignore_profiles)}
+
+    key = next((k for k in filtered_keys if k.endswith(key_suffix)), None)
     if key is None:
         if treat_key_not_found_as_success:
             return True, None
@@ -65,26 +75,27 @@ def validate_numeric_range_property(properties, key_suffix, min_val=0, max_val=N
     else:
         return False, f"Value '{value}' for key `{key}` is outside the expected range of {min_val}-{max_val}"
 
+
 def validate_properties(properties):
     errors = []
 
     # if not rule_application_id_or_client_id_defined(properties):
     #    errors.append("Either 'kafka-streams.application-id' or '*client.id' must be defined.")
 
-    max_poll_records_in_range, msg = validate_numeric_range_property(properties, "max.poll.records", 1, 500, True)
+    max_poll_records_in_range, msg = validate_numeric_range_property(properties, "max.poll.records", 1, 500, True,ignore_profiles=["dev", "test"])
     if not max_poll_records_in_range:
         errors.append(f"Property 'max.poll.records' must be numeric and within range: {msg}")
 
-    max_records_success, msg = rule_matching_suffix_value(properties, 'kafka.security.protocol', 'SASL_SSL')
+    max_records_success, msg = rule_matching_suffix_value(properties, 'kafka.security.protocol', 'SASL_SSL', ignore_profiles=["dev", "test"])
     if not max_records_success:
         errors.append(f"kafka.security.protocol NOT set to SASL_SSL: {msg}")
 
-    acks_success, msg = rule_matching_suffix_value(properties, "kafka-streams.producer.acks", "all")
+    acks_success, msg = rule_matching_suffix_value(properties, "kafka-streams.producer.acks", "all",ignore_profiles=["dev", "test"])
     if not acks_success:
         errors.append(f"kafka-streams.producer.acks NOT set to 'all'. {msg}") 
 
-    acks_success, msg = rule_matching_suffix_value(properties, "kafka-streams.producer.compression.type", ["snappy", "zstd", "lz4"])
-    if not acks_success:
+    compression_success, msg = rule_matching_suffix_value(properties, "kafka-streams.producer.compression.type", ["snappy", "zstd", "lz4"],ignore_profiles=["dev", "test"])
+    if not compression_success:
         errors.append(f"kafka-streams.producer.compression.type: {msg}") 
 
     return errors
