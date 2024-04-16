@@ -1,4 +1,5 @@
 import re
+import sys
 
 def read_properties(file_path):
     properties = {}
@@ -12,15 +13,11 @@ def read_properties(file_path):
                   print(f"Error processing line {line_number}: '{line.strip()}' does not match 'key=value' format.")
     return properties
 
-def is_numeric(value):
-    return value.isdigit()
-
-# TODO - return offending value 
-def rule_matching_suffix_value1(properties, key_suffix, expected_value):
-    key = next(filter(lambda k: k.endswith(key_suffix), properties.keys()), None)
-    if key is not None:
-        return properties[key] == expected_value
-    return False
+def validate_keys_not_ending_with(data_dict, suffix):
+    for key in data_dict.keys():
+        if str(key).endswith(suffix):
+            return False, f"Expected {key} to not be set. It is set to {data_dict[key]}."
+    return True, None
 
 def rule_matching_suffix_value(properties, key_suffix, expected_values, treat_key_not_found_as_success=False):
     if not isinstance(expected_values, list):
@@ -39,6 +36,12 @@ def rule_matching_suffix_value(properties, key_suffix, expected_values, treat_ke
         else:
             return False, f"No key ending with '{key_suffix}' found"
 
+def is_numeric(value):
+    try:
+        float(value)
+        return True
+    except ValueError:
+        return False
 
 def rule_max_poll_records(properties):
     key = next(filter(lambda k: k.endswith('max.poll.records'), properties.keys()), None)
@@ -72,7 +75,9 @@ def validate_properties(properties):
     return errors
 
 def main():
-    properties = read_properties('src/main/resources/application.properties')
+    default_file_path = 'src/main/resources/application.properties'
+    file_path = sys.argv[1] if len(sys.argv) > 1 else default_file_path
+    properties = read_properties(file_path)
     errors = validate_properties(properties)
 
     if errors:
