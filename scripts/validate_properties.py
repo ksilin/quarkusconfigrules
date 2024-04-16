@@ -43,13 +43,27 @@ def is_numeric(value):
     except ValueError:
         return False
 
-def rule_max_poll_records(properties):
-    key = next(filter(lambda k: k.endswith('max.poll.records'), properties.keys()), None)
-    if key is None: return True
-    if key is not None:
-        max_records = properties[key]
-        return is_numeric(max_records) and int(max_records) <= 1000
-    return False
+def validate_numeric_range_property(properties, key_suffix, min_val=0, max_val=None, treat_key_not_found_as_success=False):
+    if max_val is None:
+        max_val = float('inf')
+
+    key = next((k for k in properties.keys() if k.endswith(key_suffix)), None)
+    if key is None:
+        if treat_key_not_found_as_success:
+            return True, None
+        else:
+            return False, f"No key ending with '{key_suffix}' found"
+    
+    value = properties[key]
+    if not is_numeric(value):
+        return False, f"Value '{value}' for key '{key}' is not numeric'"
+
+    value = float(value)
+    in_range = min_val <= value <= max_val
+    if in_range:
+      return True, None
+    else:
+        return False, f"Value '{value}' for key `{key}` is outside the expected range of {min_val}-{max_val}"
 
 def validate_properties(properties):
     errors = []
@@ -57,8 +71,9 @@ def validate_properties(properties):
     # if not rule_application_id_or_client_id_defined(properties):
     #    errors.append("Either 'kafka-streams.application-id' or '*client.id' must be defined.")
 
-    if not rule_max_poll_records(properties):
-        errors.append("Property 'max.poll.records' must be numeric and <= 10000.")
+    max_poll_records_in_range, msg = validate_numeric_range_property(properties, "max.poll.records", 1, 500, True)
+    if not max_poll_records_in_range:
+        errors.append(f"Property 'max.poll.records' must be numeric and within range: {msg}")
 
     max_records_success, msg = rule_matching_suffix_value(properties, 'kafka.security.protocol', 'SASL_SSL')
     if not max_records_success:
