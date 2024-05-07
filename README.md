@@ -225,6 +225,8 @@ This is required by Confluent Cloud.
 
 This is required by Confluent Cloud.
 
+// TODO - complete
+
 
 ### Kafka Streams requirements
 
@@ -334,9 +336,6 @@ https://docs.confluent.io/platform/current/installation/configuration/consumer-c
 
 
 ## TODO
-
-
-
 
 
 ### Set producer `delivery.timeout.ms` 
