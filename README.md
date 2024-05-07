@@ -1,4 +1,4 @@
-# quarkusconfig
+# quarkusconfigrules
 
 The purpose of this project is to provide enforceable guidelines on application configurations. 
 In its first iteration, specifically on Kafka Streams applications created with the Quarkus framework. 
@@ -86,7 +86,7 @@ The application of concrete rules can be found in the `scripts/validate_properti
 While we value rapid feedback, complete feedback is even more preferable. We do not fail on the first rule violation. We aggregate all violations, so they can be fixed all at once, saving precious cycle time. 
 
 
-### Profies and prefixes
+### Profiles and prefixes
 
 The Quarkus framework offers the possibility to work with multiple profiles. In the configuration files, the properties are then prefixed with the profile name, e.g. 
 
@@ -216,16 +216,15 @@ https://docs.confluent.io/platform/current/streams/developer-guide/config-stream
 
 #### Set `kafka.sasl.mechanism` to `PLAIN`
 
-This is required by Confluent Cloud.
+This configuration is required by Confluent Cloud.
 
-// TODO - complete
-
+https://developer.confluent.io/get-started/java/#configuration
 
 #### Use the `PlainLoginModule` in your SASL JAAS config
 
-This is required by Confluent Cloud.
+This configuration is required by Confluent Cloud. We perform a simple regex check for plausibility.
 
-// TODO - complete
+https://developer.confluent.io/get-started/java/#configuration
 
 
 ### Kafka Streams requirements
@@ -253,7 +252,7 @@ The default metrics level is `INFO`. Some important metrics are only collected i
 
 https://docs.confluent.io/platform/current/streams/monitoring.html
 
-### Do not use the deprecated `cache.max.bytes.buffering` and `buffered.records.per.partition` configuration
+#### Do not use the deprecated `cache.max.bytes.buffering` and `buffered.records.per.partition` configuration
 
 The configuration has been renamed and is deprecated. However, many parts of the existing documentation did not catch up with the change yet. 
 
@@ -269,7 +268,7 @@ https://quarkus.io/guides/kafka-streams
 
 ### Quarkus-specific recommendations
 
-#### Ensuring `quarkus.kafka-streams.topics`is set to a plausible string
+#### Ensuring `quarkus.kafka-streams.topics` is set to a plausible string
 
 Quarkus offers a safeguard, which prevents the Kafka Streams application from starting, unless the configured topics exist on the cluster. 
 
@@ -277,9 +276,28 @@ This configuration is beneficial, so we are requiring it to be set to a non-empt
 
 Kafka topic names are restricted to alphanumerics, underscore, dot and dash. Since there can be multiple topics, we add the comma, the dollar sign and curly braces to our regex: `r'^[a-zA-Z0-9\.\-\$_,\{\}]+$'`
 
-// TODO - add health check info
+This validation, though optional, can add useful information on the current state of the application on both liveness and readiness health checks: 
+
+`curl -i http://myapplication:8080/q/health/ready`
+
+```json
+{
+    "status": "DOWN",
+    "checks": [
+        {
+            "name": "Kafka Streams topics health check",
+            "status": "DOWN",
+            "data": {
+                "missing_topics": "weather-stations,temperature-values"
+            }
+        }
+    ]
+}
+```
 
 https://quarkus.pro/guides/kafka-streams.html#quarkus-kafka-streams_quarkus.kafka-streams.topics
+
+https://quarkus.io/guides/kafka-streams#kafka-streams-health-checks
 
 
 ### Performance-oriented rules
@@ -292,7 +310,7 @@ In our setup, we are expecting this value to be either left at the default value
 
 https://quarkus.io/guides/kafka-streams
 
-#### If explicitly setting producer `linger.ms`, do not use exreme values
+#### If explicitly setting producer `linger.ms`, do not use extreme values
 
 The default is `100`, optimized for low latency.
 For high throughput, consider increasing the value, accompanied by continuous testing. 
