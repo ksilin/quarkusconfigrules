@@ -1,22 +1,32 @@
 name: Validate application.properties
 
-# PR defaults are 'opened', 'synchronize' & 'reopened' - must be free from merge conflicts
-on: [push, pull_request]
-
+# Define the events that trigger the workflow.
+# This workflow triggers on 'push' events to the main branch in the repository and
+# on 'pull_request' events when a pull request is opened, synchronized, or reopened.
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
 jobs:
   validate:
     runs-on: ubuntu-latest
 
     steps:
+      # Step 1: Check out the repository's code so the workflow can access it.
       - uses: actions/checkout@v4
         name: Checkout code
 
+      # Step 2: Set up a Python 3 environment.
+      # This step uses a GitHub Action to set up a Python interpreter based on the version specified.
       - name: Set up Python 3.x
         uses: actions/setup-python@v5
         with:
           python-version: '3.x'
 
+      # Step 3: Validate the application.properties file.
+      # This step executes a Python script that validates settings in the application.properties file.
       - name: Validate application.properties
         run: python ./scripts/validate_properties.py
-      #- name: Validate application.properties
-      #  run: ./scripts/verify-config.sh

@@ -1,7 +1,23 @@
 import re
 import sys
+from validations import validate_property_not_set, validate_value_expected, validate_value_regex, is_numeric, validate_value_numeric_range, get_key_value_by_suffix, validate_numeric_property_relation, validate_exclusive_property_setting, validate_conditional_numeric_range
 
 def read_properties(file_path):
+    """
+    Read and parse properties from a file. Each property should be on a separate line in the format 'key=value'.
+    Lines starting with '#' are treated as comments and are ignored.
+
+    Parameters:
+        file_path (str): The path to the file containing the properties.
+
+    Returns:
+        dict: A dictionary containing all the properties read from the file, where each key-value pair corresponds
+              to one property defined in the file.
+
+    Raises:
+        IOError: An error occurs when the file at the specified path cannot be opened or read.
+        ValueError: An error occurs if any line in the file does not match the expected 'key=value' format.
+    """
     properties = {}
     with open(file_path, 'r') as file:
         for line_number, line in enumerate(file, start=1):
@@ -12,159 +28,6 @@ def read_properties(file_path):
                 except ValueError:
                   print(f"Error processing line {line_number}: '{line.strip()}' does not match 'key=value' format.")
     return properties
-
-def validate_property_not_set(properties, key_suffix):
-    for key in properties.keys():
-        if str(key).endswith(key_suffix):
-            return False, f"Expected {key} to not be set. It is set to {properties[key]}."
-    return True, None
-
-def validate_value_expected(properties, key_suffix, expected_values, treat_key_not_found_as_success=False, ignore_profiles=None):
-    if not isinstance(expected_values, list):
-        expected_values = [expected_values]
-
-    key, value = get_key_value_by_suffix(properties, key_suffix, ignore_profiles)
-
-    if key:
-        if value in expected_values:
-            return True, (key, value)
-        else:
-            return False, f"{key} found but set to '{value}', expected {expected_values}"
-    else:
-        if treat_key_not_found_as_success:
-            return True, None
-        else:
-            return False, f"No key ending with '{key_suffix}' found"
-
-def validate_value_regex(properties, key_suffix, regex_pattern, treat_key_not_found_as_success=False, ignore_profiles=None):
-    if ignore_profiles is None:
-        ignore_profiles = []
-
-    key, value = get_key_value_by_suffix(properties, key_suffix, ignore_profiles)
-
-    if key:
-        if re.match(regex_pattern, value):
-            return True, (key, value)
-        else:
-            return False, f"Value '{value}' for key '{key}' does not match the required pattern: {regex_pattern}"
-    else:
-        if treat_key_not_found_as_success:
-            return True, None
-        else:
-            return False, f"No key ending with '{key_suffix}' found"
-
-def is_numeric(value):
-    try:
-        float(value)
-        return True
-    except ValueError:
-        return False
-
-def validate_value_numeric_range(properties, key_suffix, min_val=0, max_val=None, treat_key_not_found_as_success=False, ignore_profiles=None):
-    if max_val is None:
-        max_val = float('inf')
-
-    key, value = get_key_value_by_suffix(properties, key_suffix, ignore_profiles)
-
-    if key is None:
-        if treat_key_not_found_as_success:
-            return True, None
-        else:
-            return False, f"No key ending with '{key_suffix}' found"
-
-    if not is_numeric(value):
-        return False, f"Value '{value}' for key '{key}' is not numeric"
-
-    value = float(value)
-    in_range = min_val <= value <= max_val
-    if in_range:
-        return True, None
-    else:
-        return False, f"Value '{value}' for key `{key}` is outside of the expected range [{min_val},{max_val}]"
-
-def get_key_value_by_suffix(properties, key_suffix, ignore_profiles=None):
-    if ignore_profiles is None:
-        ignore_profiles = []
-
-    filtered_keys = {
-        k: v for k, v in properties.items()
-        if not any(k.startswith(f"%{profile}") for profile in ignore_profiles)
-        and k.endswith(key_suffix)
-    }
-
-    key = next(iter(filtered_keys), None)
-    return (key, filtered_keys.get(key)) if key else (None, None)
-
-def validate_numeric_property_relation(properties, key_suffix_1, key_suffix_2, min_multiple, max_multiple, ignore_profiles=None):
-
-    key_1, value_1 = get_key_value_by_suffix(properties, key_suffix_1, ignore_profiles)
-    key_2, value_2 = get_key_value_by_suffix(properties, key_suffix_2, ignore_profiles)
-
-    if value_1 is None:
-        return True, f"Property '{key_suffix_1}' is not configured; default is considered valid."
-
-    try:
-        numeric_1 = float(value_1)
-        numeric_2 = float(value_2)
-    except ValueError:
-        return False, f"One of the properties '{key_1}'='{value_1}' or '{key_2}'='{value_2}' is not a valid number."
-
-    min_val = numeric_1 * min_multiple
-    max_val = numeric_1 * max_multiple
-
-    if min_val <= numeric_2 <= max_val:
-        return True, f"Property '{key_2}' is correctly set within the range [{min_val}, {max_val}] based on '{key_1}' value of {numeric_1}."
-    else:
-        return False, f"Property '{key_2}'='{numeric_2}' is not within the expected range [{min_val}, {max_val}] based on '{key_1}' value of {numeric_1}."
-
-def validate_exclusive_property_setting(properties, key_suffix_1, key_suffix_2, ignore_profiles=None):
-
-    if ignore_profiles is None:
-        ignore_profiles = []
-
-    key_1, _ = get_key_value_by_suffix(properties, key_suffix_1, ignore_profiles)
-    key_2, _ = get_key_value_by_suffix(properties, key_suffix_2, ignore_profiles)
-
-    if (key_1 is not None) ^ (key_2 is not None):
-        return True, f"Exactly one property is set as expected: '{key_1 if key_1 else key_2}' is set."
-    elif key_1 is not None and key_2 is not None:
-        return False, f"Both '{key_1}' and '{key_2}' are set, but only one should be set."
-    else:
-        return False, f"Neither of '{key_suffix_1}' and '{key_suffix_2}' is set. One of the properties must be set."
-
-def validate_conditional_numeric_range(properties, key_suffix_1, expected_value_1, key_suffix_2, min_val, max_val, ignore_profiles=None):
-    """
-    Validate that if one property is set to a specific value, then second property must be within a defined numeric range.
-
-    Parameters:
-        properties (dict): Dictionary containing property keys and values.
-        key_suffix_1 (str): Key suffix for the first property.
-        expected_value_1 (str): The specific value of property first property that triggers validation for second property.
-        key_b_suffix (str): Key suffix for second property - the one being evaluated against the range.
-        min_val (float): Minimum valid value for second property.
-        max_val (float): Maximum valid value for second property.
-        ignore_profiles (list, optional): Profiles to ignore in key searching.
-
-    Returns:
-        tuple: (bool, str) indicating whether the property value is valid and a message describing the result.
-    """
-    key_1, value_1 = get_key_value_by_suffix(properties, key_suffix_1, ignore_profiles)
-    if value_1 != expected_value_1:
-        return True, f"Property '{key_1}' is not set to '{expected_value_1}'; no validation for '{key_suffix_2}' is required."
-
-    key_2, value_2 = get_key_value_by_suffix(properties, key_suffix_2, ignore_profiles)
-    if key_2 is None:
-        return False, f"Property with suffix '{key_suffix_2}' must be set when '{key_1}' is '{value_1}'."
-
-    if not is_numeric(value_2):
-        return False, f"Property '{key_2}'='{value_2}' is not numeric and cannot be validated."
-
-    b_numeric = float(value_2)
-    if min_val <= b_numeric <= max_val:
-        return True, f"Property '{key_2}'='{value_2}' is correctly set within the range [{min_val}, {max_val}]."
-    else:
-        return False, f"Property '{key_2}'='{value_2}' is not within the expected range [{min_val}, {max_val}], which applies when '{key_1}' is '{value_1}'."
-
 
 def validate_properties(properties):
     errors = []

@@ -9,13 +9,13 @@ The assumption is that the configuration is contained in the `src/resources/appl
 
 There are several types of rules: 
 
-Some enforce a value or one of many possible values, or a value range. 
+Some enforce a value or one of many possible values, a value range or a regex match. 
 Some enforce a reasonable cooperation of values.  
 Some enforce that once a default value has been overridden, it is done on purpose, and with a reasonable alternative. 
 
 ### Enforcing a value or value range
 
-* Value 
+* Single value 
 
 When working with Confluent Cloud, the value for the security protocol always needs to be set to `SASL_SSL`. 
 
@@ -28,8 +28,13 @@ We might decide to allow `snappy` and `lz4`, while disallowing `gzip` and `zstd`
 
 We might decide to override `max.poll.records`, to reduce or increase the number of records processed per poll loop. But these changes need to happen in a reasonable range.
 
+* Value regular expression
 
-### Enforcing value combination example
+Some values, such as topic names can only be checked for plausibility, not concrete values. For this purpose, regex matching validations are used. 
+
+### Enforcing property combinations
+
+* Value as a range of multiples of another value
 
 Consumer configuration:
 
@@ -42,11 +47,37 @@ Some applications override/increase the request timeout, in order to be able to 
 The default API timeout value should be greater than the request timeout in order to be able to gracefully handle errors, e.g. committing offsets in an exception handler.  
 If this is not the case, the application will timeout immediately, after the request timeout threshold has been reached. 
 
+https://docs.confluent.io/platform/current/installation/configuration/producer-configs.html#request-timeout-ms
+
+* Only one of multiple properties can be set
+
+Quarkus offers multiple ways fo setting the same parameters. Either one of those can be used. Using multiple properties in the same file may lead to uneecessary confusion. 
+
+* Conditional numeric range
+
+Some properties imply changes in others. For example, enabling exactly-once processing implicitly changes commit intervals and further producer properties.
+
+This has the effect that the applicable value range of one property only applies if a different property has been set to a certain value.  
+
+### Other rules
+
+* Enforcing NOT setting a preperty
+
+This is useful to prevent applcations from using deprecated properties, which will be removed in the future, or prevent reasonable defaults from being overwritten.  
+
 ### Defaults are fine, overrides need to be coordinated
 
 The default deserialization exception handler will fail on a message it cannot read, bringing down the instance. In many cases, this is the expected behavior. However, we might want to rather skip the record and continue. 
 
 This decision needs to be communicated and agreed upon, so by default, overriding the handler is not allowed. The ruel can be disabled for a project, once consensus has been reached.  
+
+### Implementation and application
+
+The validations are implemented in a generic way, to be applied to multiple existing rules, as well as potential further rules in the future.  
+
+The implementation of generic rules can be found in the `scripts/validations.py` file.
+
+The application of concrete rules can be found in the `scripts/validate_properties.py` file. 
 
 ## Details
 
@@ -63,11 +94,15 @@ The Quarkus framework offers the possiblity to work with multiple profiles. In t
 
 For correct functionality, we need to check the configurations ending in the expected string.  
 
-The rules allow for ignoring any violations in certain profiles. By default, properties in the `dev` and `test` profiles are not checked for violations. 
+The rules allow for ignoring any violations in certain profiles. By default, properties in the `dev` and `test` profiles are not checked for violations. This can be changed per rule check.
 
 ## Rules
 
-### Set a reasonable `max.poll.records` limit
+### Increased client stability, resilience, availability
+
+Some rules are difficult to put into a sungle bucket, as many rules aim on reducing the number of requests and makign individual requests more efficient. This can hava a positive impact on the throughput of the application, but at the same time reduces the burden on the cluster, by reducing the total amount of requests.
+
+#### Set a reasonable `max.poll.records` limit
 
 The default setting of `1000` might be too high and lead to consumer session timeouts.
 If you are noticing frequent rebalances, consider identifying a safe value.  
@@ -76,15 +111,7 @@ In our example, we are checking for a range between `1` and `500`.
 
 https://github.com/apache/kafka/blob/3.7/streams/src/main/java/org/apache/kafka/streams/StreamsConfig.java#L1200
 
-### Set `kafka.security.protocol` to `SASL_SSL`
-
-This is the default for Confluent Cloud applications. 
-
-If not set, client might attempt connecting to the cluster using a plaintext protocol, failing the SSL handshake and retrying, effectively trying to DoS the clsuter.  
-
-https://docs.confluent.io/platform/current/streams/developer-guide/config-streams.html#security-protocol
-
-### Set `kafka-streams.producer.acks` to `all`
+#### Set `kafka-streams.producer.acks` to `all`
 
 The default for Kafka Streams is `1`. This can potentially lead to data loss, if the leader immediately fails after acknowledging the record, but before the followers have replicated it. The recommended value is `all`.
 
@@ -92,23 +119,25 @@ The value of `all` is automatically applied with exactly-once processing and is 
 
 https://docs.confluent.io/platform/current/streams/developer-guide/config-streams.html#recommended-configuration-parameters-for-resiliency
 
-### Set `kafka-streams.topic.min.insync.replicas` to `2`
+#### Set `kafka-streams.producer.compression.type`to one of the values `snappy`, `zstd`, or `lz4`
 
- The minimum number of replicas to acknowledge producer writes. Topics on Confluent Cloud only allow this setting to be `1` or `2`. The default and the recommended value to use with Confluent Cloud is `2`. Lower values can potentially lead to data loss, if the leader immediately fails after acknowledging the record, but before the followers have replicated it.
+It is generally recommended to use producer compression. It is not active by default. 
+Among the available algorithms, `gzip` has the highest CPU cost and can be safely discouraged in favor of the other algorithms. 
+Deciding between the remaining three is often a matter of experimatation, as they perfom differently depending on multiple factors. 
+
+https://www.confluent.io/blog/apache-kafka-message-compression/
+
+#### Set `kafka-streams.topic.min.insync.replicas` to `2`
+
+ The minimum number of replicas to acknowledge producer writes. Topics on Confluent Cloud allow this setting to be `1` or `2`. The default and the recommended value to use with Confluent Cloud is `2`. Lower values can potentially lead to data loss, if the leader immediately fails after acknowledging the record, but before the followers have replicated it.
 
  The value can remain unset. 
 
  Be mindful of the `TopicPrefix`: https://github.com/confluentinc/kafka/blob/v7.6.1/streams/src/main/java/org/apache/kafka/streams/StreamsConfig.java#L177
 
-
 https://docs.confluent.io/platform/current/streams/developer-guide/config-streams.html#recommended-configuration-parameters-for-resiliency
 
-### Set `kafka-streams.producer.compression.type`to one of the values `snappy`, `zstd`, or `lz4`
-
-It is generally recommended to use producer compression. It is not active by default. 
-Among the available algorithms, `gzip` has the highest CPU cost and can be safely discouraged in favor of the other algorithms. 
-
-### Topic replication factor is either default or 3 - `kafka-streams.replication.factor`
+#### Topic replication factor is either default or 3 - `kafka-streams.replication.factor`
 
 The default value of `-1` (default to broker config) is sufficient to provide internal topics with the same availability guarantee we expect from all topics.
 
@@ -116,7 +145,9 @@ If explicitly set, the recommended value is `3`, in line with other topics.
 
 The value can remain unset. 
 
-### Setting standby replicas - `kafka-streams.num.standby.replicas`
+https://docs.confluent.io/platform/current/installation/configuration/streams-configs.html#replication-factor
+
+#### Setting standby replicas - `kafka-streams.num.standby.replicas`
 
 Standby replicas are copies of local state stores, used to minimize the latency of task failovers. 
 
@@ -130,39 +161,7 @@ https://docs.confluent.io/platform/current/streams/developer-guide/config-stream
 
 https://docs.confluent.io/platform/current/streams/developer-guide/config-streams.html#recommended-configuration-parameters-for-resiliency
 
-### Enabling state store and other metrics with `kafka-streams.metrics.recording.level=DEBUG`
-
-The default metrics level is `INFO`. Some important metrics are only collected if `DEBUG` level is activated, e.g. most task-level, state store, and record cache metrics.
-
-https://docs.confluent.io/platform/current/streams/monitoring.html
-
-### Ensuring either `kafka-streams.bootstrap-servers` or `kafka.bootstrap.servers` is set
-
-This configuration is required for the application to start. The `kafka` variant is used for non-KStreams implementations (e.g. Smallrye Kafka Connector) and is a fallback to the `kafka-streams` variant with Kafka Streams. 
-
-https://quarkus.pro/guides/kafka-streams.html#quarkus-kafka-streams_quarkus.kafka-streams.bootstrap-servers
-
-### Ensuring `quarkus.kafka-streams.application-id`is set
-
-This configuration is required for the application to start.
-
-The application ID can be a combination of alphanumerics, underscore, dot and dash. We use this regex to ensure this: `r'^[a-zA-Z0-9\.\-_]+$'` . Additional checks can be added to enforce naming and versioning rules. 
-
-https://docs.confluent.io/platform/current/streams/developer-guide/config-streams.html#application-id
-
-https://quarkus.pro/guides/kafka-streams.html#quarkus-kafka-streams_quarkus.kafka-streams.application-server
-
-### Ensuring `quarkus.kafka-streams.topics`is set to a plausible string
-
-Quarkus offers a safeguard, which prevents the Kafka Streams application from starting, unless the configured topics exist on the cluster. 
-
-This configuration is beneficial, so we are requiring it to be set to a non-empty, plausible string.  
-
-Kafka topic names are restricted to alphanumerics, underscore, dot and dash. Since there can be multiple topics, we add the comma, the dollar sign and curly braces to our regex: `r'^[a-zA-Z0-9\.\-\$_,\{\}]+$'`
-
-https://quarkus.pro/guides/kafka-streams.html#quarkus-kafka-streams_quarkus.kafka-streams.topics
-
-### Ensuring `kafka-streams.state.dir` is set explicitly
+#### Ensuring `kafka-streams.state.dir` is set explicitly
 
 By default, the state is stored in `/${java.io.tmpdir}/kafka-streams`. This might not be where you want the state to be set, as the default tempdir will be purged on system restart.
 
@@ -172,13 +171,85 @@ We are using a simple regex, same as for the application id: `r'^[a-zA-Z0-9\.\-_
 
 https://docs.confluent.io/platform/current/streams/developer-guide/config-streams.html#state-dir
 
-### Throughput-friendly caching - `kafka-streams.statestore.cache.max.bytes`
+#### Exactly-once processing (EOS) - use the right version for `processing.guarantee`
 
-The Quarkus Kafka Streams tutorial recommends setting the value to `10240`. This is good for testing, as records are progressing through the topology quickly. For production, higher values are recommended.
+The only recommended version is `exactly_once_v2`. Other values, such as `exactly_once` and `exactly_one_beta` are deprecated and will be removed. The default value of `at_least_once` can, but should not be set explicitly. 
 
-In our setup, we are expecting this value to be either left at the default value of `10485760`, or set to a value over `1000000`.
+https://docs.confluent.io/platform/current/streams/developer-guide/config-streams.html#optional-configuration-parameters
+
+#### Commit interval for at-least-once-processing: `kafka-streams.commit.interval.ms`
+
+The defaults are `30000` for at-least-once processing, and `100` for `exactly_once_v2`. 
+
+If EOS is used, `100` ms might be too short, potentially resulting in failures and retries. We recommend increasing the configuration to `200` to `1000` ms for EOS.
+
+https://docs.confluent.io/platform/current/streams/developer-guide/config-streams.html#commit-interval-ms
+
+#### Prevent excessive metadata requests: `kafka-streams.metadata.max.age.ms`
+
+The Quarkus Kafka Streams tutorial recommends setting the value to `500`. This is fine for testing, where we need quick propagation od metadata changes. However, in production, we are either leaving this configuration it its default (5 minutes), or setting it to a reasonably high value of 30+ sec.
+
+Having this property set to a low value can generate an excellsive number of metadata requests, inclreasing teh load on the client itself and the cluster. 
 
 https://quarkus.io/guides/kafka-streams
+
+https://docs.confluent.io/platform/current/streams/developer-guide/config-streams.html#metadata-max-age-ms
+
+#### Do not configure producer idempotence explicitly, or set it to `true`.
+
+The default for `enable.idempotence` is `true` since AK 3.1. When using older clients, setting it to `true` is recommended.
+
+When using EOS, producer idempotence is enabled by default.
+
+https://docs.confluent.io/platform/current/installation/configuration/producer-configs.html#enable-idempotence
+
+
+### Confluent Cloud requirements
+
+#### Set `kafka.security.protocol` to `SASL_SSL`
+
+This is the requirement for Confluent Cloud applications. 
+
+If not set, client might attempt connecting to the cluster using a plaintext protocol, failing the SSL handshake and retrying, effectively trying to DoS the clsuter.  
+
+https://docs.confluent.io/platform/current/streams/developer-guide/config-streams.html#security-protocol
+
+#### Set `kafka.sasl.mechanism` to `PLAIN`
+
+This is required by Confluent Cloud.
+
+// TODO - complete
+
+
+#### Use the `PlainLoginModule` in your SASL JAAS config
+
+This is required by Confluent Cloud.
+
+
+### Kafka Streams requirements
+
+#### Ensuring `quarkus.kafka-streams.application-id`is set
+
+This configuration is required for the application to start.
+
+The application ID can be a combination of alphanumerics, underscore, dot and dash. We use this regex to ensure this: `r'^[a-zA-Z0-9\.\-_]+$'` . Additional checks can be added to enforce naming and versioning rules. 
+
+https://docs.confluent.io/platform/current/streams/developer-guide/config-streams.html#application-id
+
+#### Ensuring either `kafka-streams.bootstrap-servers` or `kafka.bootstrap.servers`, but not both, is set
+
+This configuration is required for the application to start. The `kafka` variant is used for non-KStreams implementations (e.g. Smallrye Kafka Connector) and is a fallback to the `kafka-streams` variant with Kafka Streams. 
+
+https://quarkus.pro/guides/kafka-streams.html#quarkus-kafka-streams_quarkus.kafka-streams.bootstrap-servers
+
+
+### Further recommendations
+
+#### Enabling state store and other metrics with `kafka-streams.metrics.recording.level=DEBUG`
+
+The default metrics level is `INFO`. Some important metrics are only collected if `DEBUG` level is activated, e.g. most task-level, state store, and record cache metrics.
+
+https://docs.confluent.io/platform/current/streams/monitoring.html
 
 ### Do not use the deprecated `cache.max.bytes.buffering` and `buffered.records.per.partition` configuration
 
@@ -193,29 +264,33 @@ https://issues.apache.org/jira/browse/KAFKA-13152
 
 https://quarkus.io/guides/kafka-streams
 
-### Commit interval for at-least-once-processing: `kafka-streams.commit.interval.ms`
 
-The defaults are `30000` for at-least-once processing, and `100` for `exactly_once_v2`. 
+### Quarkus-specific recommendations
 
-If EOS is used, `100` ms might be too short, potentially resulting in failures and retries. We recommend increasing the configuration to `200` to `1000` ms for EOS.
+#### Ensuring `quarkus.kafka-streams.topics`is set to a plausible string
 
-https://docs.confluent.io/platform/current/streams/developer-guide/config-streams.html#commit-interval-ms
+Quarkus offers a safeguard, which prevents the Kafka Streams application from starting, unless the configured topics exist on the cluster. 
 
-### Prevent excessive metadata requests: `kafka-streams.metadata.max.age.ms`
+This configuration is beneficial, so we are requiring it to be set to a non-empty, plausible string.  
 
-The Quarkus Kafka Streams tutorial recommends setting the value to `500`. This is fine for testing, where we need quick propagation od metadata changes. However, in production, we are either leaving this configuration it its deault (5 minutes), or setting it to a reasonably high value of 30+ sec. 
+Kafka topic names are restricted to alphanumerics, underscore, dot and dash. Since there can be multiple topics, we add the comma, the dollar sign and curly braces to our regex: `r'^[a-zA-Z0-9\.\-\$_,\{\}]+$'`
+
+// TODO - add health check info
+
+https://quarkus.pro/guides/kafka-streams.html#quarkus-kafka-streams_quarkus.kafka-streams.topics
+
+
+### Performance-oriented rules
+
+#### Throughput-friendly caching - `kafka-streams.statestore.cache.max.bytes`
+
+The Quarkus Kafka Streams tutorial recommends setting the value to `10240`. This is good for testing, as records are progressing through the topology quickly. For production, higher values are recommended.
+
+In our setup, we are expecting this value to be either left at the default value of `10485760`, or set to a value over `1000000`.
 
 https://quarkus.io/guides/kafka-streams
 
-https://docs.confluent.io/platform/current/streams/developer-guide/config-streams.html#metadata-max-age-ms
-
-### Exactly-once processing (EOS) - use the right version for `processing.guarantee`
-
-The only recommended version is `exactly_once_v2`. Other values, such as `exactly_once` and `exactly_one_beta` are deprecated and will be removed. The default value of `at_least_once` can, but should not be set explicitly. 
-
-https://docs.confluent.io/platform/current/streams/developer-guide/config-streams.html#optional-configuration-parameters
-
-### If explicitly setting producer `linger.ms`, do not use exreme values
+#### If explicitly setting producer `linger.ms`, do not use exreme values
 
 The default is `100`, optimized for low latency.
 For high throughput, consider increasing the value, accompanied by continuous testing. 
@@ -227,7 +302,7 @@ https://docs.confluent.io/platform/current/installation/configuration/producer-c
 
 https://github.com/apache/kafka/blob/3.7/streams/src/main/java/org/apache/kafka/streams/StreamsConfig.java#L1182
 
-### Explicitly set producer `batch.size` for increased throughput 
+#### Explicitly set producer `batch.size` for increased throughput 
 
 The default is `16384`, optimized for low latency.
 For a higher throughput, consider increasing the value, accompanied by continuous testing. 
@@ -238,7 +313,7 @@ Please identify the value range best suited for your application by tweaking the
 
 https://docs.confluent.io/platform/current/installation/configuration/producer-configs.html#batch-size
 
-### Adjust consumer `fetch.min.bytes` for throughput
+#### Adjust consumer `fetch.min.bytes` for throughput
 
 Is `1` by default. The default is fine for low latency and low throughput applications. 
 With increasing throughput, you will benefit from the consumer waiting for a little longer to collect more records (up to the max of `fetch.max.wait.ms = 500`), resulting in a lower number of calls to the cluster and overhead for fetch processing.    
@@ -249,24 +324,20 @@ In our example, we are setting this configuration to a range betwee `1000` and `
 
 https://docs.confluent.io/platform/current/installation/configuration/consumer-configs.html#fetch-min-bytes
 
-### If consumer `fetch.max.wait.ms` is set, do not set it too low
+#### If consumer `fetch.max.wait.ms` is set, do not set it too low
 
-As explained in the rule for `fetch.min.bytes`, a combination of a very low `fetch.min.bytes` and `fetch.max.wait.ms` can lead to a high number of small fetch requests, putting additional load on the cluster.
+As explained in the rule for `fetch.min.bytes`, a combination of a very low `fetch.min.bytes` and `fetch.max.wait.ms` can lead to a high number of small fetch requests, putting additional load on the client and the cluster.
 
 In our example, we restrict `fetch.max.wait.ms` to a value between `100`and `1000`.
 
 https://docs.confluent.io/platform/current/installation/configuration/consumer-configs.html#fetch-max-wait-ms
 
-### Do not configure producer idempotence explicitly, or set it to `true`.
 
-The default for `enable.idempotence` is `true` since AK 3.1. When using old clients, setting it to `true` is recommended.
-
-When using EOS, producer idempotence is enabled by default.
-
-https://docs.confluent.io/platform/current/installation/configuration/producer-configs.html#enable-idempotence
+## TODO
 
 
-## Testing the rules 
+
+
 
 You can test the rules on your properties file:
 
