@@ -339,6 +339,50 @@ https://docs.confluent.io/platform/current/installation/configuration/consumer-c
 
 
 
+### Set producer `delivery.timeout.ms` 
+
+Defaults to 120000 - 2 minutes. Recommended to set to Integer.MAX_VALUE
+
+
+### Set producer `max.block.ms` to Integer.MAX_VALUE
+
+#### Required for correctness in Apache Kafka clients prior to 2.6
+
+client.dns.lookup=use_all_dns_ips
+
+#### Best practice for higher availability in Apache Kafka clients prior to 3.0
+
+session.timeout.ms=45000
+
+
+#### Cloud provider-specific disconnect times with `connections.max.idle.ms`
+
+AWS 350 seconds, Azure 4 minutes, Google Cloud 10 minutes.
+
+Default - 540000 ms (9 min)
+
+https://docs.confluent.io/cloud/current/client-apps/client-configs.html
+
+https://docs.confluent.io/platform/current/installation/configuration/consumer-configs.html#connections-max-idle-ms
+
+### Do not set `retries`, or se them to Integer.MAX_VALUE
+
+https://github.com/confluentinc/kafka/blob/v7.6.1/streams/src/main/java/org/apache/kafka/streams/StreamsConfig.java#L703
+
+
+https://docs.confluent.io/platform/current/streams/developer-guide/config-streams.html#retries
+
+### Default error handling
+
+In our example, we require that the deserialization handler is either not set, or expects a hypothetical error handler class.
+
+Deserialization error handling in Kafka Streams aims to prevent data loss by failing on error. 
+
+Your application might need a different strategy, e.g. log and continue, or even write to a DLT.  
+
+
+## Testing the rules
+
 You can test the rules on your properties file:
 
 `python ./scripts/validate_properties.py <path_to_properies_file>`
