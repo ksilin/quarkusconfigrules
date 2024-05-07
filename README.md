@@ -51,7 +51,7 @@ https://docs.confluent.io/platform/current/installation/configuration/producer-c
 
 * Only one of multiple properties can be set
 
-Quarkus offers multiple ways fo setting the same parameters. Either one of those can be used. Using multiple properties in the same file may lead to uneecessary confusion. 
+Quarkus offers multiple ways fo setting the same parameters. Either one of those can be used. Using multiple properties in the same file may lead to unnecessary confusion. 
 
 * Conditional numeric range
 
@@ -61,15 +61,15 @@ This has the effect that the applicable value range of one property only applies
 
 ### Other rules
 
-* Enforcing NOT setting a preperty
+* Enforcing NOT setting a property
 
-This is useful to prevent applcations from using deprecated properties, which will be removed in the future, or prevent reasonable defaults from being overwritten.  
+This is useful to prevent applications from using deprecated properties, which will be removed in the future, or prevent reasonable defaults from being overwritten.  
 
 ### Defaults are fine, overrides need to be coordinated
 
 The default deserialization exception handler will fail on a message it cannot read, bringing down the instance. In many cases, this is the expected behavior. However, we might want to rather skip the record and continue. 
 
-This decision needs to be communicated and agreed upon, so by default, overriding the handler is not allowed. The ruel can be disabled for a project, once consensus has been reached.  
+This decision needs to be communicated and agreed upon, so by default, overriding the handler is not allowed. The rule can be disabled for a project, once consensus has been reached.  
 
 ### Implementation and application
 
@@ -83,12 +83,12 @@ The application of concrete rules can be found in the `scripts/validate_properti
 
 ### Error aggregation
 
-While we value rapid feeback, complete feedback is even more preferable. We do not fail on the first rule violation. We aggregate all violations, so they can be fixed all at once, saving precious cycle time. 
+While we value rapid feedback, complete feedback is even more preferable. We do not fail on the first rule violation. We aggregate all violations, so they can be fixed all at once, saving precious cycle time. 
 
 
 ### Profies and prefixes
 
-The Quarkus framework offers the possiblity to work with multiple profiles. In the configuration files, the properties are then prefixed with the profile name, e.g. 
+The Quarkus framework offers the possibility to work with multiple profiles. In the configuration files, the properties are then prefixed with the profile name, e.g. 
 
 `%prod.kafka.sasl.mechanism=PLAIN`
 
@@ -100,7 +100,7 @@ The rules allow for ignoring any violations in certain profiles. By default, pro
 
 ### Increased client stability, resilience, availability
 
-Some rules are difficult to put into a sungle bucket, as many rules aim on reducing the number of requests and makign individual requests more efficient. This can hava a positive impact on the throughput of the application, but at the same time reduces the burden on the cluster, by reducing the total amount of requests.
+Some rules are difficult to put into a single bucket, as many rules aim on reducing the number of requests and making individual requests more efficient. This can have a positive impact on the throughput of the application, but at the same time reduces the burden on the cluster, by reducing the total amount of requests.
 
 #### Set a reasonable `max.poll.records` limit
 
@@ -123,7 +123,7 @@ https://docs.confluent.io/platform/current/streams/developer-guide/config-stream
 
 It is generally recommended to use producer compression. It is not active by default. 
 Among the available algorithms, `gzip` has the highest CPU cost and can be safely discouraged in favor of the other algorithms. 
-Deciding between the remaining three is often a matter of experimatation, as they perfom differently depending on multiple factors. 
+Deciding between the remaining three is often a matter of experimentation, as they perform differently depending on multiple factors. 
 
 https://www.confluent.io/blog/apache-kafka-message-compression/
 
@@ -189,7 +189,7 @@ https://docs.confluent.io/platform/current/streams/developer-guide/config-stream
 
 The Quarkus Kafka Streams tutorial recommends setting the value to `500`. This is fine for testing, where we need quick propagation od metadata changes. However, in production, we are either leaving this configuration it its default (5 minutes), or setting it to a reasonably high value of 30+ sec.
 
-Having this property set to a low value can generate an excellsive number of metadata requests, inclreasing teh load on the client itself and the cluster. 
+Having this property set to a low value can generate an excessive number of metadata requests, increasing teh load on the client itself and the cluster. 
 
 https://quarkus.io/guides/kafka-streams
 
@@ -210,7 +210,7 @@ https://docs.confluent.io/platform/current/installation/configuration/producer-c
 
 This is the requirement for Confluent Cloud applications. 
 
-If not set, client might attempt connecting to the cluster using a plaintext protocol, failing the SSL handshake and retrying, effectively trying to DoS the clsuter.  
+If not set, client might attempt connecting to the cluster using a plaintext protocol, failing the SSL handshake and retrying, effectively trying to DoS the cluster.  
 
 https://docs.confluent.io/platform/current/streams/developer-guide/config-streams.html#security-protocol
 
