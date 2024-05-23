@@ -1,9 +1,20 @@
 # quarkusconfigrules
 
 The purpose of this project is to provide enforceable guidelines on application configurations. 
-In its first iteration, specifically on Kafka Streams applications created with the Quarkus framework. 
+In this first iteration, specifically on Kafka Streams applications created with the Quarkus framework. 
 
 The assumption is that the configuration is contained in the `src/resources/application.properties` file. 
+
+## Configuration and selection
+
+Since Apache Kafka 2.8, there are ~100 configurations that can be set for Kafka Producers and ~200+ configurations for Kafka Consumers. And there is another bunch of Kafka Streams-specific configurations, some of them implicitly influencing the underlying client settings.   
+
+Thankfully, a majority of these have sensible defaults, and don’t need to be adjusted for most workloads. The others are continuously reviewed by Confluent and the Apache Kafka community, and these defaults are adjusted based on feedback and common issues experienced by developers. One of the more impactful changes was introduced with Apache Kafka 3.0.x & 3.1, which changed the producer defaults for `acks`, `enable.idempotence` to more robust defaults. However, changing the defaults takes considerable time, requires upgrading the clients, and some defaults do not fit all use cases.  
+
+The focus of this selection of configurations was to make our Kafka Streams applications more robust. Sometimes this means enforcing what is already the default, as not all applications are already using the newest client versions. Some rules only provide guidance and are intended to be changed by the application team.
+
+We tried to provide explanations and references for all the rules. Surely, many of these explanations and references can be improved and extended. Feel free to do so and let us know. 
+
 
 ## Rules
 
@@ -12,6 +23,7 @@ There are several types of rules:
 Some enforce a value or one of many possible values, a value range or a regex match. 
 Some enforce a reasonable cooperation of values.  
 Some enforce that once a default value has been overridden, it is done on purpose, and with a reasonable alternative. 
+And some others. Let's look into the options in more detail.
 
 ### Enforcing a value or value range
 
@@ -77,14 +89,13 @@ The validations are implemented in a generic way, to be applied to multiple exis
 
 The implementation of generic rules can be found in the `scripts/validations.py` file.
 
-The application of concrete rules can be found in the `scripts/validate_properties.py` file. 
+The configuration of specific rules can be found in the `scripts/validate_properties.py` file. 
 
 ## Details
 
 ### Error aggregation
 
 While we value rapid feedback, complete feedback is even more preferable. We do not fail on the first rule violation. We aggregate all violations, so they can be fixed all at once, saving precious cycle time. 
-
 
 ### Profiles and prefixes
 
@@ -244,28 +255,6 @@ This configuration is required for the application to start. The `kafka` variant
 https://quarkus.pro/guides/kafka-streams.html#quarkus-kafka-streams_quarkus.kafka-streams.bootstrap-servers
 
 
-### Further recommendations
-
-#### Enabling state store and other metrics with `kafka-streams.metrics.recording.level=DEBUG`
-
-The default metrics level is `INFO`. Some important metrics are only collected if `DEBUG` level is activated, e.g. most task-level, state store, and record cache metrics.
-
-https://docs.confluent.io/platform/current/streams/monitoring.html
-
-#### Do not use the deprecated `cache.max.bytes.buffering` and `buffered.records.per.partition` configuration
-
-The configuration has been renamed and is deprecated. However, many parts of the existing documentation did not catch up with the change yet. 
-
-In the same change, the per-partition configuration `buffered.records.per.partition` (defaults to `10000`) was changed to the per-topology `input.buffer.max.bytes` (defaults to `512MB`). We do not have a recommmendation on this new configuration yet. 
-
-The implementation is to be completed with the AK 3.8 release.
-
-KIP-770: https://cwiki.apache.org/confluence/pages/viewpage.action?pageId=186878390
-https://issues.apache.org/jira/browse/KAFKA-13152
-
-https://quarkus.io/guides/kafka-streams
-
-
 ### Quarkus-specific recommendations
 
 #### Ensuring `quarkus.kafka-streams.topics` is set to a plausible string
@@ -353,50 +342,107 @@ In our example, we restrict `fetch.max.wait.ms` to a value between `100`and `100
 https://docs.confluent.io/platform/current/installation/configuration/consumer-configs.html#fetch-max-wait-ms
 
 
-## TODO
+### Further recommendations
 
+#### Enabling state store and other metrics with `kafka-streams.metrics.recording.level=DEBUG`
 
-#### Set producer `delivery.timeout.ms` 
+The default metrics level is `INFO`. Some important metrics are only collected if `DEBUG` level is activated, e.g. most task-level, state store, and record cache metrics.
 
-Defaults to 120000 - 2 minutes. Recommended to set to Integer.MAX_VALUE
+https://docs.confluent.io/platform/current/streams/monitoring.html
 
+#### Do not use the deprecated `cache.max.bytes.buffering` and `buffered.records.per.partition` configuration
 
-#### Set producer `max.block.ms` to Integer.MAX_VALUE
+The configuration has been renamed and is deprecated. However, many parts of the existing documentation did not catch up with the change yet. 
 
-### Client DNS lookup
+In the same change, the per-partition configuration `buffered.records.per.partition` (defaults to `10000`) was changed to the per-topology `input.buffer.max.bytes` (defaults to `512MB`). We do not have a recommmendation on this new configuration yet. 
 
-Required for correctness in Apache Kafka clients prior to 2.6
+The implementation is to be completed with the AK 3.8 release.
 
-`client.dns.lookup=use_all_dns_ips`
+KIP-770: https://cwiki.apache.org/confluence/pages/viewpage.action?pageId=186878390
+https://issues.apache.org/jira/browse/KAFKA-13152
 
-#### Best practice for higher availability in Apache Kafka clients prior to 3.0
+https://quarkus.io/guides/kafka-streams
 
-`session.timeout.ms=45000`
+#### Do not set `retries`, or set to `Integer.MAX_VALUE (2147483647)`
 
-#### Cloud provider-specific disconnect times with `connections.max.idle.ms`
-
-Default - 540000 ms (9 min)
-
-AWS 350 seconds, Azure 4 minutes, Google Cloud 10 minutes.
-
-https://docs.confluent.io/cloud/current/client-apps/client-configs.html
-
-https://docs.confluent.io/platform/current/installation/configuration/consumer-configs.html#connections-max-idle-ms
-
-#### Do not set `retries`, or se them to Integer.MAX_VALUE
+This configuration is deprecated in Kafka Streams versions 2.8. Embedded clients in Kafka Streams use `Integer.MAX_VALUE` as default. The default value of `retries=0` only applies to the global thread. But if you change the configuration, you may accidentally reduce the producer and admin client retry config. If looking to control the retry timeout boundaries, consider using the new configuration `task.timeout.ms` as an upper bound for any task to make progress with a default config of 5 minutes.
 
 https://github.com/confluentinc/kafka/blob/v7.6.1/streams/src/main/java/org/apache/kafka/streams/StreamsConfig.java#L703
 
+https://cwiki.apache.org/confluence/display/KAFKA/KIP-572%3A+Improve+timeouts+and+retries+in+Kafka+Streams
 
-https://docs.confluent.io/platform/current/streams/developer-guide/config-streams.html#retries
+### Client DNS lookup - use all DNS IPs
+
+The configuration `client.dns.lookup=use_all_dns_ips` is required for correctness in Apache Kafka clients prior to 2.6.
+
+For clients using Kafka Streams version 2.6 and younger, this is already the default. Since we are not checking the client version, we insist on setting the configuration explicitly. 
+
+https://docs.confluent.io/platform/current/installation/configuration/consumer-configs.html#client-dns-lookup
+
+https://cwiki.apache.org/confluence/display/KAFKA/KIP-302+-+Enable+Kafka+clients+to+use+all+DNS+resolved+IP+addresses
+
+https://cwiki.apache.org/confluence/display/KAFKA/KIP-602%3A+Change+default+value+for+client.dns.lookup
+
+#### Consumer session timeout and heartbeat - leave at default or increase reasonably
+
+Kafka consumers send periodic heartbeats to the consumer coordinator to let it know, that they are still alive and are successfully processing messages from their assigned partitions. The heartbeat is generated by a separate thread, so event processing does not interfere with the heartbeat. 
+
+If a consumer stops sending heartbeats for a period of time that exceeds the `session.timeout.ms` setting, its session will expire and the group coordinator will consider the consumer to be dead.
+
+This will trigger a rebalance of the consumer group, in which the partitions previously assigned to the dead consumer are reallocated to the remaining consumers in the group. 
+
+The frequency of the heartbeats is controlled by the `heartbeat.interval.ms` setting, which is set to 3 seconds by default.
+The `session.timeout.ms` is set to 45 seconds by default in Kafka versions 3.0 and above, and to 10 seconds in earlier versions.
+
+Leaving both configurations on default values is considered fine. When changing either of the configuration, please be mindful to not set the heartbeat interval to a low value to avoid putting additional load on the consumer coordinator. In our example, we limit the heartbeat interval to values between 3 and 30 seconds. We further limit the heartbeat interval to not be longer than 1/3 of the session timeout to give multiple heartbeat attempts the chance to reach the coordinator.  In our case, we limit the session timeout to values between 30 seconds and 5 minutes. 
+ 
+Please be mindful that in the case of static group membership, the consumer group relies on the session timeout to detect dead clients and perform a rebalance.
+
+https://cwiki.apache.org/confluence/display/KAFKA/KIP-735%3A+Increase+default+consumer+session+timeout
+
+https://docs.confluent.io/platform/current/installation/configuration/consumer-configs.html#heartbeat-interval-ms
+
+https://docs.confluent.io/platform/current/installation/configuration/consumer-configs.html#session-timeout-ms
+
+#### Set producer `delivery.timeout.ms` to `Integer.MAX_VALUE`
+
+`kafka-streams.producer.delivery.timeout.ms`
+
+If the producer times out, the production of the relevant record will not be re-attempted, as Kafka Streams does not store the record and relies on the producer for retries.
+
+Recommended to set to `Integer.MAX_VALUE`, to enable the application to survive cluster outages for longer than the default timeout of 2 minutes. 
+
+#### Cloud provider-specific disconnect times with `connections.max.idle.ms`
+
+The default value for this configuration is  540000 (9 minutes). Previously, this may have led to issues, as the default idle timeouts on cloud load balancers, sued by Confluent Cloud, were shorter in some cases (AWS - 350 seconds, Azure - 4 minutes, Google Cloud - 10 minutes). Confluent Cloud brokers now terminate idle connections before load balancers do.
+
+In our case, while no longer necessary, we recommend setting the idle connection timeout to a value between 120000 (2 minutes) and 240000 (4 minutes).
+
+https://docs.confluent.io/cloud/current/client-apps/client-configs.html#common-properties
+
+https://docs.confluent.io/platform/current/streams/developer-guide/config-streams.html#connections-max-idle-ms
+
+https://learn.microsoft.com/en-us/azure/load-balancer/load-balancer-tcp-reset#configurable-tcp-idle-timeout
 
 #### Default error handling
 
-In our example, we require that the deserialization handler is either not set, or expects a hypothetical error handler class.
+The default behavior will not lose/skip any data, while the alternative one will skip records in order not to fail and stop the processing.  
 
-Deserialization error handling in Kafka Streams aims to prevent data loss by failing on error. 
+Your application might need a different strategy, e.g. log and continue, or write to a DLT. It can thus make sense to replace the default handler for your project, but this decision needs to be documented, among other things in the configuration rules.  
 
-Your application might need a different strategy, e.g. log and continue, or even write to a DLT.  
+There are two built-in implementations of the `default.deserialization.exception.handler`. The default one (`LogAndFailExceptionHandler`) returns `FAIL` on deserialization exceptions. The `LogAndContinueExceptionHandler` will not fail, but will drop the offending record and continue. 
+
+In our example, we require that the deserialization handler is either not set, or set to to either the default value of `kafka.streams.errors.LogAndFailDeserializationHandler`, or a hypothetical `com.example.CustomDeserializationExceptionHandler` error handler class.
+
+There is just one built-in implementation of the `default.production.exception.handler`, which always fails of non-retriable errors, e.g. `RecordTooLargeException`. By default, we disallow setting this configuration.
+
+https://docs.confluent.io/platform/current/streams/developer-guide/config-streams.html#default-deserialization-exception-handler
+
+https://docs.confluent.io/platform/current/streams/faq.html#streams-faq-failure-handling-deserialization-errors
+
+https://docs.confluent.io/platform/current/streams/developer-guide/config-streams.html#default-production-exception-handler
+
+https://docs.confluent.io/platform/7.6/streams/javadocs/javadoc/org/apache/kafka/streams/errors/DefaultProductionExceptionHandler.html
 
 
 ## Testing the rules

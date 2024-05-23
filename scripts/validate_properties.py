@@ -1,6 +1,6 @@
 import re
 import sys
-from validations import validate_property_not_set, validate_value_expected, validate_value_regex, is_numeric, validate_value_numeric_range, get_key_value_by_suffix, validate_numeric_property_relation, validate_exclusive_property_setting, validate_conditional_numeric_range
+from validations import validate_property_not_set, validate_value_expected, validate_value_regex, validate_value_numeric_range, validate_numeric_property_relation, validate_exclusive_property_setting, validate_conditional_numeric_range
 
 def read_properties(file_path):
     """
@@ -161,6 +161,54 @@ def validate_properties(properties):
     idempotence, msg = validate_value_expected(properties, "producer.enable.idempotence", "true", True, ignore_profiles=["dev", "test"])
     if not idempotence:
         errors.append(f"producer.enable.idempotence: {msg}") 
+        
+   # kafka-streams.retries - not set, or Integer.MAX_VALUE (2147483647)
+    retries, msg = validate_value_expected(properties, "kafka-streams.retries", 2147483647 ,True, ignore_profiles=["dev", "test"])
+    if not retries:
+        errors.append(f"kafka-streams.retries: {msg}") 
+        
+       # delivery.timeout.ms - set to Integer.MAX_VALUE (2147483647)
+    delivery_timeout, msg = validate_value_expected(properties, "producer.delivery.timeout.ms", 2147483647 , ignore_profiles=["dev", "test"])
+    if not delivery_timeout:
+        errors.append(f"producer delivery.timeout.ms: {msg}") 
+        
+        
+    # client.dns.lookup - set to use_all_dns_ips
+    dns_lookup, msg = validate_value_expected(properties, "client.dns.lookup", "use_all_dns_ips", ignore_profiles=["dev", "test"])
+    if not dns_lookup:
+        errors.append(f"client.dns.lookup: {msg}") 
+        
+    # session.timeout.ms
+    session_timeout, msg = validate_value_numeric_range(properties, "consumer.session.timeout.ms", 30000, 300000, True, ignore_profiles=["dev", "test"])
+    if not session_timeout:
+        errors.append(f"Consumer session.timeout.ms: {msg}") 
+        
+    # heartbeat.interval.ms
+    heartbeat_interval, msg = validate_value_numeric_range(properties, "consumer.heartbeat.interval.ms", 3000, 30000, True, ignore_profiles=["dev", "test"])
+    if not heartbeat_interval:
+        errors.append(f"Consumer heartbeat.interval.ms: {msg}") 
+       
+    # relation between session.timeout.ms and heartbeat.interval.ms 
+    heartbeat_interval_session_timeout_relation, msg = validate_numeric_property_relation(properties, "consumer.session.timeout.ms", "consumer.heartbeat.interval.ms", 0.1, 0.33, ignore_profiles=["dev", "test"])
+    if not heartbeat_interval_session_timeout_relation:
+        errors.append(f"Consumer session.timeout.ms & heartbeat.interval.ms: {msg}") 
+        
+    # connections.max.idle.ms
+    connections_idle, msg = validate_value_numeric_range(properties, "connections.max.idle.ms", 120000, 240000, ignore_profiles=["dev", "test"])
+    if not connections_idle:
+        errors.append(f"connections.max.idle.ms: {msg}")     
+
+    # deserialization exception handler
+    deserialization_handler, msg = validate_value_expected(properties, "kafka-streams.default.deserialization.exception.handler", ["kafka.streams.errors.LogAndFailDeserializationHandler", "com.example.CustomDeserializationExceptionHandler"], True, ignore_profiles=["dev", "test"])
+    if not deserialization_handler:
+        errors.append(f"Default deserialization exception handler: {msg}")     
+
+
+    # production exception handler
+    production_handler, msg = validate_property_not_set(properties, "kafka-streams.default.production.exception.handler")
+    if not production_handler:
+        errors.append(f"The configuration 'default.production.exception.handler' is set unexpectedly. Please clarify the requirement with your application team, before changing this configuration. {msg}")
+
 
     return errors
 
