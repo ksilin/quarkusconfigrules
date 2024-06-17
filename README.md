@@ -7,42 +7,43 @@ The assumption is that the configuration is contained in the `src/resources/appl
 
 ## Configuration and selection
 
-Since Apache Kafka 2.8, there are ~100 configurations that can be set for Kafka Producers and ~200+ configurations for Kafka Consumers. And there is another bunch of Kafka Streams-specific configurations, some of them implicitly influencing the underlying client settings.   
+In Apache Kafka 2.8, there are ~100 configurations that can be set for Kafka Producers and ~200+ configurations for Kafka Consumers. Furthermore, there is a bunch of Kafka Streams-specific configurations, some of them implicitly influencing the underlying client settings.   
 
-Thankfully, a majority of these have sensible defaults, and don’t need to be adjusted for most workloads. The others are continuously reviewed by Confluent and the Apache Kafka community, and these defaults are adjusted based on feedback and common issues experienced by developers. One of the more impactful changes was introduced with Apache Kafka 3.0.x & 3.1, which changed the producer defaults for `acks`, `enable.idempotence` to more robust defaults. However, changing the defaults takes considerable time, requires upgrading the clients, and some defaults do not fit all use cases.  
+Thankfully, the majority of these configurations have sensible defaults, and don’t need to be adjusted for most workloads. Configurations are continuously reviewed by Confluent and the Apache Kafka community, and the default values are adjusted based on feedback and common issues experienced by developers. For example, some of the more impactful changes were introduced with Apache Kafka 3.0.x & 3.1, changing the producer defaults for `acks` and `enable.idempotence` to more robust defaults. However, changing the defaults is a long process, it requires upgrading the clients, and some defaults still might not fit all use cases.  
 
-The focus of this selection of configurations was to make our Kafka Streams applications more robust. Sometimes this means enforcing what is already the default, as not all applications are already using the newest client versions. Some rules only provide guidance and are intended to be changed by the application team.
+The focus of this selection of configurations was to make our Quarkus-based Kafka Streams applications more robust. Sometimes this means enforcing what is already the default, as not all applications are using the newest client versions. Some rules rather provide guidance and are intended to be changed by the application team.
 
-We tried to provide explanations and references for all the rules. Surely, many of these explanations and references can be improved and extended. Feel free to do so and let us know. 
-
+We tried to provide explanations and references for every rule. Surely, many of these explanations and references can be improved and extended. Feel free to do so and let us know. 
 
 ## Rules
 
 There are several types of rules: 
 
-Some enforce a value or one of many possible values, a value range or a regex match. 
-Some enforce a reasonable cooperation of values.  
-Some enforce that once a default value has been overridden, it is done on purpose, and with a reasonable alternative. 
-And some others. Let's look into the options in more detail.
+* Some enforce a value or one of many possible values, a value range or a regex match. 
+* Some enforce a reasonable cooperation of values.  
+* Some enforce that once a default value has been overridden, it is done on purpose, and with a reasonable alternative. 
+* And some others, which do not fit in any of the above groups. 
+
+Let's look into the options in more detail.
 
 ### Enforcing a value or value range
 
 * Single value 
 
-When working with Confluent Cloud, the value for the security protocol always needs to be set to `SASL_SSL`. 
+When working with Confluent Cloud, the value for the security protocol always needs to be set to `SASL_SSL`. Anything else will lead to errors.
 
 * One value of many 
 
 When deciding on one of many options, e.g. compression algorithm, the decision depends on the data and should be the result of benchmarking. 
-We might decide to allow `snappy` and `lz4`, while disallowing `gzip` and `zstd`.  
+As an example, w‚e might decide to allow `snappy` and `lz4`, while disallowing `gzip` and `zstd`.
 
 * Value range
 
-We might decide to override `max.poll.records`, to reduce or increase the number of records processed per poll loop. But these changes need to happen in a reasonable range.
+We might decide to override `max.poll.records`, to reduce or increase the number of records processed per poll loop. These changes need to be restricted in a reasonable range.
 
 * Value regular expression
 
-Some values, such as topic names can only be checked for plausibility, not concrete values. For this purpose, regex matching validations are used. 
+Some values, such as topic names can only be checked for plausibility, not for their concrete values. For this purpose, regex matching validations are used. 
 
 ### Enforcing property combinations
 
@@ -56,32 +57,31 @@ Consumer configuration:
 
 Some applications override/increase the request timeout, in order to be able to handle longer outages. However, they might forget to also increase the default API timeout.   
 
-The default API timeout value should be greater than the request timeout in order to be able to gracefully handle errors, e.g. committing offsets in an exception handler.  
-If this is not the case, the application will timeout immediately, after the request timeout threshold has been reached. 
+The default API timeout value should be greater than the request timeout in order to be able to gracefully handle errors, e.g. committing offsets in an exception handler. If this is not the case, the application will timeout immediately, after the request timeout threshold has been reached. 
 
 https://docs.confluent.io/platform/current/installation/configuration/producer-configs.html#request-timeout-ms
 
 * Only one of multiple properties can be set
 
-Quarkus offers multiple ways fo setting the same parameters. Either one of those can be used. Using multiple properties in the same file may lead to unnecessary confusion. 
+Quarkus offers multiple ways of setting the same parameters. Either one of those can be used. Using multiple properties in the same file may lead to unnecessary confusion. 
 
 * Conditional numeric range
 
-Some properties imply changes in others. For example, enabling exactly-once processing implicitly changes commit intervals and further producer properties.
+Some properties imply changes in others properties. For example, enabling exactly-once processing implicitly changes commit intervals and further producer properties.
 
-This has the effect that the applicable value range of one property only applies if a different property has been set to a certain value.  
+This type of rule enforces an value range of one property, but only if a different property has been set to a certain value.  
 
 ### Other rules
 
-* Enforcing NOT setting a property
+* Making sure a property is NOT set
 
-This is useful to prevent applications from using deprecated properties, which will be removed in the future, or prevent reasonable defaults from being overwritten.  
+This is useful to prevent applications from using deprecated properties, which will be removed in the future, or prevent reasonable defaults from being overridden.  
 
 ### Defaults are fine, overrides need to be coordinated
 
-The default deserialization exception handler will fail on a message it cannot read, bringing down the instance. In many cases, this is the expected behavior. However, we might want to rather skip the record and continue. 
+The default deserialization exception handler will fail on a message it cannot read, bringing down the instance. In many cases, this is the desired behavior. However, we might want to rather skip the record and continue.
 
-This decision needs to be communicated and agreed upon, so by default, overriding the handler is not allowed. The rule can be disabled for a project, once consensus has been reached.  
+This decision needs to be communicated and agreed upon, so by default, overriding the handler is not allowed. The rule can be disabled for a project, once consensus has been reached.
 
 ### Implementation and application
 
@@ -95,7 +95,7 @@ The configuration of specific rules can be found in the `scripts/validate_proper
 
 ### Error aggregation
 
-While we value rapid feedback, complete feedback is even more preferable. We do not fail on the first rule violation. We aggregate all violations, so they can be fixed all at once, saving precious cycle time. 
+While we value rapid feedback, complete feedback is even more preferable. We do not fail on the first rule violation. We aggregate all violations, so they can be reviewed and fixed all at once, saving precious cycle time. 
 
 ### Profiles and prefixes
 
@@ -105,9 +105,11 @@ The Quarkus framework offers the possibility to work with multiple profiles. In 
 
 For correct functionality, we need to check the configurations ending in the expected string.  
 
-The rules allow for ignoring any violations in certain profiles. By default, properties in the `dev` and `test` profiles are not checked for violations. This can be changed per rule check.
+The rules allow for ignoring any violations in certain profiles. By default, properties in the `dev` and `test` profiles are not checked for violations. This can be changed per individual rule check.
 
-## Rules
+## The rules
+
+We have organized the rules into groups, each of the groups addressing different aspects of the clients functionality. 
 
 ### Increased client stability, resilience, availability
 
@@ -411,6 +413,23 @@ https://docs.confluent.io/platform/current/installation/configuration/consumer-c
 If the producer times out, the production of the relevant record will not be re-attempted, as Kafka Streams does not store the record and relies on the producer for retries.
 
 Recommended to set to `Integer.MAX_VALUE`, to enable the application to survive cluster outages for longer than the default timeout of 2 minutes. 
+
+#### Set consumer & admin client `default.api.timeout.ms` to 3 to 10 minutes
+
+The default is 1 minute. We want to increase this timeout to give the client the capability to survive longer cluster rolls and similar interruptions.
+
+https://docs.confluent.io/platform/current/installation/configuration/consumer-configs.html#default-api-timeout-ms
+
+#### When increasing `request.timeout.ms`, also increase the `default.api.timeout.ms`
+
+Some applications override/increase the request timeout, in order to be able to handle longer outages. However, they might forget to also increase the default API timeout.
+
+The default API timeout value should be greater than the request timeout in order to be able to gracefully handle errors, e.g. committing offsets in an exception handler. If this is not the case, the application will timeout immediately, after the request timeout threshold has been reached. 
+
+`request.timeout.ms` defaults to 30 seconds.
+
+https://docs.confluent.io/platform/current/installation/configuration/producer-configs.html#request-timeout-ms
+
 
 #### Cloud provider-specific disconnect times with `connections.max.idle.ms`
 
